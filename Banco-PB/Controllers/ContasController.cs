@@ -10,6 +10,7 @@ using Banco_PB.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.WindowsAzure.Storage;
 using Microsoft.WindowsAzure.Storage.Blob;
+using Azure.Storage.Blobs;
 
 namespace Banco_PB.Controllers
 {
@@ -74,8 +75,8 @@ namespace Banco_PB.Controllers
 
         private static string UploadImage(IFormFile imageFile)
         {
-            string connectionString = "DefaultEndpointsProtocol=https;AccountName=xxxresourcer;AccountKey=19LwhIgh1nJiU6BTH6idmZ4W285jkSS3xkowQ3D1vPOQjXe8kWE6ULNG6vrBFgQt+wzqf1f0mAYG+AStBR1/Zw==;EndpointSuffix=core.windows.net";
-            string containerName = "aulapblp";
+            string connectionString = @"DefaultEndpointsProtocol=https;AccountName=xxxresourcer;AccountKey=19LwhIgh1nJiU6BTH6idmZ4W285jkSS3xkowQ3D1vPOQjXe8kWE6ULNG6vrBFgQt+wzqf1f0mAYG+AStBR1/Zw==;EndpointSuffix=core.windows.net";
+            string containerName = "imagem";
             var reader = imageFile.OpenReadStream();
             var cloundStorageAccount = CloudStorageAccount.Parse(connectionString);
             var blobClient = cloundStorageAccount.CreateCloudBlobClient();
@@ -109,7 +110,7 @@ namespace Banco_PB.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("Id,Nome,Saldo")] Conta conta)
+        public async Task<IActionResult> Edit(int id, Conta conta, IFormFile Foto)
         {
             if (id != conta.Id)
             {
@@ -120,6 +121,7 @@ namespace Banco_PB.Controllers
             {
                 try
                 {
+                    conta.Foto = UploadImage(Foto);
                     _context.Update(conta);
                     await _context.SaveChangesAsync();
                 }
@@ -169,11 +171,21 @@ namespace Banco_PB.Controllers
             var conta = await _context.Conta.FindAsync(id);
             if (conta != null)
             {
+                DeleteFile(conta.Foto);
                 _context.Conta.Remove(conta);
             }
-            
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
+        }
+        private static void DeleteFile(string foto)
+        {
+            string connectionString = @"DefaultEndpointsProtocol=https;AccountName=xxxresourcer;AccountKey=19LwhIgh1nJiU6BTH6idmZ4W285jkSS3xkowQ3D1vPOQjXe8kWE6ULNG6vrBFgQt+wzqf1f0mAYG+AStBR1/Zw==;EndpointSuffix=core.windows.net";
+            string containerName = "imagem";
+            var blobServiceClient = new BlobServiceClient(connectionString);
+            var blobContainerClient = blobServiceClient.GetBlobContainerClient(containerName);
+            string arquivo = foto.Substring(foto.LastIndexOf('/') + 1);
+            var blobClient = blobContainerClient.GetBlobClient(arquivo);
+            blobClient.DeleteIfExists();
         }
 
         private bool ContaExists(int id)
