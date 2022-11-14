@@ -11,15 +11,18 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.WindowsAzure.Storage;
 using Microsoft.WindowsAzure.Storage.Blob;
 using Azure.Storage.Blobs;
+using Newtonsoft.Json;
+using System.Text;
 
 namespace Banco_PB.Controllers
 {
     [Authorize]
     public class ContasController : Controller
     {
+        private readonly string URL = "https://localhost:7051/api/contasapi";
         private readonly ApplicationDbContext _context;
 
-        public ContasController(ApplicationDbContext context)
+        public ContasController(ApplicationDbContext context, IConfiguration configuration)
         {
             _context = context;
         }
@@ -27,24 +30,30 @@ namespace Banco_PB.Controllers
         // GET: Contas
         public async Task<IActionResult> Index()
         {
-              return View(await _context.Conta.ToListAsync());
+              List<Conta> conta = new List<Conta>();
+            using (var httpClient = new HttpClient())
+            {
+                using (var response = await httpClient.GetAsync(URL))
+                {
+                    string apiReponse = await response.Content.ReadAsStringAsync();
+                    conta = JsonConvert.DeserializeObject<List<Conta>>(apiReponse);
+                }
+            }
+            return View(conta);
         }
 
         // GET: Contas/Details/5
         public async Task<IActionResult> Details(int? id)
         {
-            if (id == null || _context.Conta == null)
+            Conta conta = new Conta();
+            using (var httpClient = new HttpClient())
             {
-                return NotFound();
+                using (var response = await httpClient.GetAsync(URL + "/" + id))
+                {
+                    string apiReponse = await response.Content.ReadAsStringAsync();
+                    conta = JsonConvert.DeserializeObject<Conta>(apiReponse);
+                }
             }
-
-            var conta = await _context.Conta
-                .FirstOrDefaultAsync(m => m.Id == id);
-            if (conta == null)
-            {
-                return NotFound();
-            }
-
             return View(conta);
         }
         
@@ -66,8 +75,16 @@ namespace Banco_PB.Controllers
             if (ModelState.IsValid)
             {
                 conta.Foto = UploadImage(Foto);
-                _context.Add(conta);
-                await _context.SaveChangesAsync();
+                using (var httpClient = new HttpClient())
+                {
+                    StringContent content = new StringContent(JsonConvert.SerializeObject(conta),
+                        Encoding.UTF8, "application/json");
+                    using (var response = await httpClient.PostAsync(URL, content))
+                    {
+                        string apiResponse = await response.Content.ReadAsStringAsync();
+                        conta = JsonConvert.DeserializeObject<Conta>(apiResponse);
+                    }
+                }
                 return RedirectToAction(nameof(Index));
             }
             return View(conta);
@@ -144,37 +161,35 @@ namespace Banco_PB.Controllers
         // GET: Contas/Delete/5
         public async Task<IActionResult> Delete(int? id)
         {
-            if (id == null || _context.Conta == null)
+            Conta conta = new Conta();
+            using (var httpClient = new HttpClient())
             {
-                return NotFound();
+                using (var response = await httpClient.GetAsync(URL + "/" + id))
+                {
+                    string apiReponse = await response.Content.ReadAsStringAsync();
+                    conta = JsonConvert.DeserializeObject<Conta>(apiReponse);
+                }
             }
-
-            var conta = await _context.Conta
-                .FirstOrDefaultAsync(m => m.Id == id);
-            if (conta == null)
-            {
-                return NotFound();
-            }
-
             return View(conta);
         }
+    
         [Authorize(Roles = "Administrador")]
         // POST: Contas/Delete/5
         [HttpPost, ActionName("Delete")]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> DeleteConfirmed(int id)
+        public async Task<IActionResult> DeleteConfirmed(Conta conta)
         {
-            if (_context.Conta == null)
-            {
-                return Problem("Entity set 'ApplicationDbContext.Conta'  is null.");
-            }
-            var conta = await _context.Conta.FindAsync(id);
             if (conta != null)
             {
                 DeleteFile(conta.Foto);
-                _context.Conta.Remove(conta);
+                using (var httpCliente = new HttpClient())
+                {
+                    using (var response = await httpCliente.DeleteAsync(URL + "/" + conta.Id))
+                    {
+                        await  response.Content.ReadAsStringAsync();
+                    }
+                }
             }
-            await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
         }
         private static void DeleteFile(string foto)
@@ -187,7 +202,6 @@ namespace Banco_PB.Controllers
             var blobClient = blobContainerClient.GetBlobClient(arquivo);
             blobClient.DeleteIfExists();
         }
-
         private bool ContaExists(int id)
         {
           return _context.Conta.Any(e => e.Id == id);
